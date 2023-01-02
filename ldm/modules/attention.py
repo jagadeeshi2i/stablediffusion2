@@ -143,28 +143,33 @@ class SpatialSelfAttention(nn.Module):
 
 
 class CrossAttention(nn.Module):
-    def __init__(self, query_dim, context_dim=None, heads=8, dim_head=64, dropout=0.):
+    def __init__(self, query_dim, context_dim=None, heads=8, dim_head=64, dropout=0., use_native_mha=False):
         super().__init__()
         inner_dim = dim_head * heads
+        self.dim_head = dim_head
         context_dim = default(context_dim, query_dim)
+        if use_native_mha:
+            self.mha = nn.MultiheadAttention(inner_dim, heads, dropout, kdim=context_dim, vdim=context_dim, batch_first=True)
+        else:
+            self.scale = dim_head ** -0.5
+            self.heads = heads
 
-        self.scale = dim_head ** -0.5
-        self.heads = heads
+            self.to_q = nn.Linear(query_dim, inner_dim, bias=False)
+            self.to_k = nn.Linear(context_dim, inner_dim, bias=False)
+            self.to_v = nn.Linear(context_dim, inner_dim, bias=False)
 
-        self.to_q = nn.Linear(query_dim, inner_dim, bias=False)
-        self.to_k = nn.Linear(context_dim, inner_dim, bias=False)
-        self.to_v = nn.Linear(context_dim, inner_dim, bias=False)
-
-        self.to_out = nn.Sequential(
-            nn.Linear(inner_dim, query_dim),
-            nn.Dropout(dropout)
-        )
+            self.to_out = nn.Sequential(
+                nn.Linear(inner_dim, query_dim),
+                nn.Dropout(dropout)
+            )
 
     def forward(self, x, context=None, mask=None):
-        h = self.heads
-
-        q = self.to_q(x)
         context = default(context, x)
+        if hasattr(self, "mha"):
+            return self.mha(x, context, context, key_padding_mask=mask, need_weights=False)[0]
+
+        h = self.heads
+        q = self.to_q(x)
         k = self.to_k(context)
         v = self.to_v(context)
 
@@ -249,17 +254,18 @@ class BasicTransformerBlock(nn.Module):
         "softmax-xformers": MemoryEfficientCrossAttention
     }
     def __init__(self, dim, n_heads, d_head, dropout=0., context_dim=None, gated_ff=True, checkpoint=True,
-                 disable_self_attn=False):
+                 disable_self_attn=False, use_native_mha=False):
         super().__init__()
         attn_mode = "softmax-xformers" if XFORMERS_IS_AVAILBLE else "softmax"
         assert attn_mode in self.ATTENTION_MODES
         attn_cls = self.ATTENTION_MODES[attn_mode]
         self.disable_self_attn = disable_self_attn
+        kwargs = {"use_native_mha": use_native_mha} if attn_mode == "softmax" else {}
         self.attn1 = attn_cls(query_dim=dim, heads=n_heads, dim_head=d_head, dropout=dropout,
-                              context_dim=context_dim if self.disable_self_attn else None)  # is a self-attention if not self.disable_self_attn
+                              context_dim=context_dim if self.disable_self_attn else None, **kwargs)  # is a self-attention if not self.disable_self_attn
         self.ff = FeedForward(dim, dropout=dropout, glu=gated_ff)
         self.attn2 = attn_cls(query_dim=dim, context_dim=context_dim,
-                              heads=n_heads, dim_head=d_head, dropout=dropout)  # is self-attn if context is none
+                              heads=n_heads, dim_head=d_head, dropout=dropout, **kwargs)  # is self-attn if context is none
         self.norm1 = nn.LayerNorm(dim)
         self.norm2 = nn.LayerNorm(dim)
         self.norm3 = nn.LayerNorm(dim)
@@ -287,7 +293,7 @@ class SpatialTransformer(nn.Module):
     def __init__(self, in_channels, n_heads, d_head,
                  depth=1, dropout=0., context_dim=None,
                  disable_self_attn=False, use_linear=False,
-                 use_checkpoint=True):
+                 use_checkpoint=True, use_native_mha=False):
         super().__init__()
         if exists(context_dim) and not isinstance(context_dim, list):
             context_dim = [context_dim]
@@ -305,7 +311,7 @@ class SpatialTransformer(nn.Module):
 
         self.transformer_blocks = nn.ModuleList(
             [BasicTransformerBlock(inner_dim, n_heads, d_head, dropout=dropout, context_dim=context_dim[d],
-                                   disable_self_attn=disable_self_attn, checkpoint=use_checkpoint)
+                                   disable_self_attn=disable_self_attn, checkpoint=use_checkpoint, use_native_mha=use_native_mha)
                 for d in range(depth)]
         )
         if not use_linear:

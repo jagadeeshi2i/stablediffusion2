@@ -143,6 +143,17 @@ class PLMSSampler(object):
         iterator = tqdm(time_range, desc='PLMS Sampler', total=total_steps)
         old_eps = []
 
+        alphas = self.model.alphas_cumprod if ddim_use_original_steps else self.ddim_alphas
+        alphas_prev = self.model.alphas_cumprod_prev if ddim_use_original_steps else self.ddim_alphas_prev
+        sigmas = self.model.ddim_sigmas_for_original_num_steps if ddim_use_original_steps else self.ddim_sigmas
+        sqrt_one_minus_alphas = self.model.sqrt_one_minus_alphas_cumprod if ddim_use_original_steps else self.ddim_sqrt_one_minus_alphas
+
+        # Prepare values of alphas and sigma at each point in time broadcasted over the batch to speed up the sampling loop
+        self.a_t = alphas.reshape(-1, 1, 1, 1, 1).expand(-1, b, 1, 1, 1).to(device=device)
+        self.a_prev = torch.tensor(alphas_prev, device=device, dtype=self.a_t.dtype).reshape(-1, 1, 1, 1, 1).expand(-1, b, 1, 1, 1)
+        self.sigma_t = sigmas.reshape(-1, 1, 1, 1, 1).expand(-1, b, 1, 1, 1).to(device=device, dtype=self.a_t.dtype)
+        self.sqrt_one_minus_at = sqrt_one_minus_alphas.reshape(-1, 1, 1, 1, 1).expand(-1, b, 1, 1, 1).to(device=device)
+
         for i, step in enumerate(iterator):
             index = total_steps - i - 1
             ts = torch.full((b,), step, device=device, dtype=torch.long)
@@ -204,10 +215,10 @@ class PLMSSampler(object):
 
         def get_x_prev_and_pred_x0(e_t, index):
             # select parameters corresponding to the currently considered timestep
-            a_t = torch.full((b, 1, 1, 1), alphas[index], device=device)
-            a_prev = torch.full((b, 1, 1, 1), alphas_prev[index], device=device)
-            sigma_t = torch.full((b, 1, 1, 1), sigmas[index], device=device)
-            sqrt_one_minus_at = torch.full((b, 1, 1, 1), sqrt_one_minus_alphas[index],device=device)
+            a_t = self.a_t[index]
+            a_prev = self.a_prev[index]
+            sigma_t = self.sigma_t[index]
+            sqrt_one_minus_at = self.sqrt_one_minus_at[index]
 
             # current prediction for x_0
             pred_x0 = (x - sqrt_one_minus_at * e_t) / a_t.sqrt()

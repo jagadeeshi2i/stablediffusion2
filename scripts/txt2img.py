@@ -1,4 +1,5 @@
 import argparse, os
+import time
 import cv2
 import torch
 import numpy as np
@@ -171,6 +172,27 @@ def parse_args():
         default=1,
         help="repeat each prompt in file this often",
     )
+    parser.add_argument(
+        "--time_file",
+        type=str,
+        default=None,
+        help="Output file for elapsed time",
+    )
+    parser.add_argument(
+        "--disable_math",
+        action='store_true',
+        help="Enable math attention",
+    )
+    parser.add_argument(
+        "--disable_flash",
+        action='store_true',
+        help="Enable flash attention",
+    )
+    parser.add_argument(
+        "--disable_mem_efficient",
+        action='store_true',
+        help="Enable mem efficient attention",
+    )
     opt = parser.parse_args()
     return opt
 
@@ -234,7 +256,12 @@ def main(opt):
     precision_scope = autocast if opt.precision == "autocast" else nullcontext
     with torch.no_grad(), \
         precision_scope("cuda"), \
-        model.ema_scope():
+        model.ema_scope(), \
+        torch.backends.cuda.sdp_kernel(enable_math=not opt.disable_math,
+                                        enable_flash=not opt.disable_flash,
+                                        enable_mem_efficient=not opt.disable_mem_efficient,
+                                        ):
+            tic = time.time()
             all_samples = list()
             for n in trange(opt.n_iter, desc="Sampling"):
                 for prompts in tqdm(data, desc="data"):
@@ -279,9 +306,18 @@ def main(opt):
             grid = put_watermark(grid, wm_encoder)
             grid.save(os.path.join(outpath, f'grid-{grid_count:04}.png'))
             grid_count += 1
+            toc = time.time()
 
     print(f"Your samples are ready and waiting for you here: \n{outpath} \n"
           f" \nEnjoy.")
+    delta_t = toc - tic
+    print('Time elapsed to generate the samples: {}'.format(delta_t))
+    if opt.time_file:
+        try:
+            with open(opt.time_file, "a") as fl:
+                fl.write(str(delta_t) + "\n")
+        except IOError:
+            print(f"Failed to write elapsed time to {opt.time_file}")
 
 
 if __name__ == "__main__":
