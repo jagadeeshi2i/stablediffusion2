@@ -1,5 +1,6 @@
 from inspect import isfunction
 import math
+import os
 import torch
 import torch.nn.functional as F
 from torch import nn, einsum
@@ -10,6 +11,7 @@ from ldm.modules.diffusionmodules.util import checkpoint
 
 
 try:
+    assert os.environ.get("USE_XFORMERS", "True") == "True"
     import xformers
     import xformers.ops
     XFORMERS_IS_AVAILBLE = True
