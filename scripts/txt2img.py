@@ -181,17 +181,17 @@ def parse_args():
     parser.add_argument(
         "--disable_math",
         action='store_true',
-        help="Enable math attention",
+        help="Disable math attention",
     )
     parser.add_argument(
         "--disable_flash",
         action='store_true',
-        help="Enable flash attention",
+        help="Disable flash attention",
     )
     parser.add_argument(
         "--disable_mem_efficient",
         action='store_true',
-        help="Enable mem efficient attention",
+        help="Disable mem efficient attention",
     )
     opt = parser.parse_args()
     return opt
