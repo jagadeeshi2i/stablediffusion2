@@ -265,6 +265,7 @@ def main(opt):
             all_samples = list()
             for n in trange(opt.n_iter, desc="Sampling"):
                 for prompts in tqdm(data, desc="data"):
+                    tic_inner = time.time()
                     uc = None
                     if opt.scale != 1.0:
                         uc = model.get_learned_conditioning(batch_size * [""])
@@ -294,6 +295,8 @@ def main(opt):
                         sample_count += 1
 
                     all_samples.append(x_samples)
+                    toc_inner = time.time()
+                    print('Time elapsed for one iteration: {}'.format(toc_inner - tic_inner))
 
             # additionally, save as grid
             grid = torch.stack(all_samples, 0)
