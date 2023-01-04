@@ -184,7 +184,7 @@ class PLMSSampler(object):
                 intermediates['pred_x0'].append(pred_x0)
 
         return img, intermediates
-
+    @torch.compile
     @torch.no_grad()
     def p_sample_plms(self, x, c, t, index, repeat_noise=False, use_original_steps=False, quantize_denoised=False,
                       temperature=1., noise_dropout=0., score_corrector=None, corrector_kwargs=None,
