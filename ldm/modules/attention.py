@@ -31,7 +31,7 @@ def uniq(arr):
 def default(val, d):
     if exists(val):
         return val
-    return d() if isfunction(d) else d
+    return d #d() if isfunction(d) else d
 
 
 def max_neg_value(t):
@@ -182,9 +182,9 @@ class CrossAttention(nn.Module):
                 sim = einsum('b i d, b j d -> b i j', q, k) * self.scale
         else:
             sim = einsum('b i d, b j d -> b i j', q, k) * self.scale
-        
+
         del q, k
-    
+
         if exists(mask):
             mask = rearrange(mask, 'b ... -> b (...)')
             max_neg_value = -torch.finfo(sim.dtype).max
@@ -333,15 +333,21 @@ class SpatialTransformer(nn.Module):
         x = self.norm(x)
         if not self.use_linear:
             x = self.proj_in(x)
-        x = rearrange(x, 'b c h w -> b (h w) c').contiguous()
+        #print("before ", x.shape)
+        #x = rearrange(x, 'b c h w -> b (h w) c').contiguous()
+        x = x.reshape(b, c, -1).transpose(1, 2).contiguous()
+        #print("after ", x.shape)
         if self.use_linear:
             x = self.proj_in(x)
         for i, block in enumerate(self.transformer_blocks):
             x = block(x, context=context[i])
         if self.use_linear:
             x = self.proj_out(x)
-        x = rearrange(x, 'b (h w) c -> b c h w', h=h, w=w).contiguous()
+        #print("before2 ", x.shape)
+        # x = rearrange(x, 'b (h w) c -> b c h w', h=h, w=w).contiguous()
+        x = x.transpose(1, 2).reshape(b, c, h, w).contiguous()
+        #print("after2 ", x.shape)
+
         if not self.use_linear:
             x = self.proj_out(x)
         return x + x_in
-
