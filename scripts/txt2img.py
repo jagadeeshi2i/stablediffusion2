@@ -261,9 +261,11 @@ def main(opt):
                                         enable_flash=not opt.disable_flash,
                                         enable_mem_efficient=not opt.disable_mem_efficient,
                                         ):
-            tic = time.time()
+
             all_samples = list()
-            for n in trange(opt.n_iter, desc="Sampling"):
+            for n in trange(opt.n_iter + 1, desc="Sampling"):  # Add a warm-up iteration
+                if n == 1:
+                    tic = time.time()  # Warm-up iteration finished, start measuring time
                 for prompts in tqdm(data, desc="data"):
                     tic_inner = time.time()
                     uc = None

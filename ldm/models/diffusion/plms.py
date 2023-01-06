@@ -26,7 +26,7 @@ class PLMSSampler(object):
         self.model = model #torch.compile(model)
 
         #print("~~~~~~~~~~~~~~~~recompiling!!!~~~~~~~~~~~~~~~~~~~~")
-        self.model.model.diffusion_model = torch.compile(self.model.model.diffusion_model)
+        #self.model.model.diffusion_model = torch.compile(self.model.model.diffusion_model)
         # print("model")
         # print(model.__class__)
         # print(model)
@@ -73,7 +73,7 @@ class PLMSSampler(object):
                         1 - self.alphas_cumprod / self.alphas_cumprod_prev))
         self.register_buffer('ddim_sigmas_for_original_num_steps', sigmas_for_original_sampling_steps)
 
-        #self.plms_sampling = torch.compile(self.plms_sampling)
+        self.plms_sampling = torch.compile(self.plms_sampling)
 
     @torch.no_grad()
     def sample(self,
@@ -115,6 +115,28 @@ class PLMSSampler(object):
         C, H, W = shape
         size = (batch_size, C, H, W)
         print(f'Data shape for PLMS sampling is {size}')
+
+
+        # explanation, out_guards, graphs, ops_per_graph, break_reasons, explanation_verbose = torch._dynamo.explain(
+        #             self.plms_sampling, conditioning, size,
+        #                                             callback=callback,
+        #                                             img_callback=img_callback,
+        #                                             quantize_denoised=quantize_x0,
+        #                                             mask=mask, x0=x0,
+        #                                             ddim_use_original_steps=False,
+        #                                             noise_dropout=noise_dropout,
+        #                                             temperature=temperature,
+        #                                             score_corrector=score_corrector,
+        #                                             corrector_kwargs=corrector_kwargs,
+        #                                             x_T=x_T,
+        #                                             log_every_t=log_every_t,
+        #                                             unconditional_guidance_scale=unconditional_guidance_scale,
+        #                                             unconditional_conditioning=unconditional_conditioning,
+        #                                             dynamic_threshold=dynamic_threshold,
+        #         )
+        # print(explanation_verbose)
+        # assert False
+
 
         samples, intermediates = self.plms_sampling(conditioning, size,
                                                     callback=callback,
@@ -158,7 +180,7 @@ class PLMSSampler(object):
             timesteps = self.ddim_timesteps[:subset_end]
 
         intermediates = {'x_inter': [img], 'pred_x0': [img]}
-        time_range = list(reversed(range(0,timesteps))) if ddim_use_original_steps else np.flip(timesteps)
+        time_range = list(reversed(range(0,timesteps))) if ddim_use_original_steps else timesteps[::-1] #np.flip(timesteps)
         total_steps = timesteps if ddim_use_original_steps else timesteps.shape[0]
         print(f"Running PLMS Sampling with {total_steps} timesteps")
 
@@ -176,8 +198,9 @@ class PLMSSampler(object):
         self.sigma_t = sigmas.reshape(-1, 1, 1, 1, 1).expand(-1, b, 1, 1, 1).to(device=device, dtype=self.a_t.dtype)
         self.sqrt_one_minus_at = sqrt_one_minus_alphas.reshape(-1, 1, 1, 1, 1).expand(-1, b, 1, 1, 1).to(device=device)
 
-        for i, step in enumerate(iterator):
-            print(f"~~~~~~ iteration number {i} ~~~~~~~")
+        for i in range(len(iterator)):
+            step = iterator[i]
+            #print(f"~~~~~~ iteration number {i} ~~~~~~~")
             index = total_steps - i - 1
             ts = torch.full((b,), step, device=device, dtype=torch.long)
             ts_next = torch.full((b,), time_range[min(i + 1, len(time_range) - 1)], device=device, dtype=torch.long)
