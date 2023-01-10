@@ -4,6 +4,7 @@ import torch
 import torch._dynamo.config
 import torch._inductor.config
 torch._inductor.config.fallback_random = True
+from torch._C._profiler import _ExperimentalConfig
 # torch._inductor.config.triton.cudagraphs = False
 # torch._dynamo.config.verbose=True
 # torch._inductor.config.debug = True
@@ -73,7 +74,7 @@ class PLMSSampler(object):
                         1 - self.alphas_cumprod / self.alphas_cumprod_prev))
         self.register_buffer('ddim_sigmas_for_original_num_steps', sigmas_for_original_sampling_steps)
 
-        self.plms_sampling = torch.compile(self.plms_sampling)
+        #self.plms_sampling = torch.compile(self.plms_sampling)
 
     @torch.no_grad()
     def sample(self,
@@ -137,23 +138,26 @@ class PLMSSampler(object):
         # print(explanation_verbose)
         # assert False
 
-
+        #with torch.profiler.profile(with_stack=True, experimental_config=_ExperimentalConfig(verbose=True)) as p:
         samples, intermediates = self.plms_sampling(conditioning, size,
-                                                    callback=callback,
-                                                    img_callback=img_callback,
-                                                    quantize_denoised=quantize_x0,
-                                                    mask=mask, x0=x0,
-                                                    ddim_use_original_steps=False,
-                                                    noise_dropout=noise_dropout,
-                                                    temperature=temperature,
-                                                    score_corrector=score_corrector,
-                                                    corrector_kwargs=corrector_kwargs,
-                                                    x_T=x_T,
-                                                    log_every_t=log_every_t,
-                                                    unconditional_guidance_scale=unconditional_guidance_scale,
-                                                    unconditional_conditioning=unconditional_conditioning,
-                                                    dynamic_threshold=dynamic_threshold,
-                                                    )
+                                                        callback=callback,
+                                                        img_callback=img_callback,
+                                                        quantize_denoised=quantize_x0,
+                                                        mask=mask, x0=x0,
+                                                        ddim_use_original_steps=False,
+                                                        noise_dropout=noise_dropout,
+                                                        temperature=temperature,
+                                                        score_corrector=score_corrector,
+                                                        corrector_kwargs=corrector_kwargs,
+                                                        x_T=x_T,
+                                                        log_every_t=log_every_t,
+                                                        unconditional_guidance_scale=unconditional_guidance_scale,
+                                                        unconditional_conditioning=unconditional_conditioning,
+                                                        dynamic_threshold=dynamic_threshold,
+                                                        )
+        # p.export_chrome_trace("/tmp/stable_diffusion_trace_steps_2.json")
+        # p.export_stacks("/tmp/stable_diffusion_stacks_steps_2_cpu.txt", "self_cpu_time_total")
+        # p.export_stacks("/tmp/stable_diffusion_stacks_steps_2_cuda.txt", "self_cuda_time_total")
         #print(prof.report())
         return samples, intermediates
 

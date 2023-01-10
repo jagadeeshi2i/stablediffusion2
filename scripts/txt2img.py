@@ -160,11 +160,9 @@ def parse_args():
         help="the seed (for reproducible sampling)",
     )
     parser.add_argument(
-        "--precision",
-        type=str,
-        help="evaluate at this precision",
-        choices=["full", "autocast"],
-        default="autocast"
+        "--disable_autocast",
+        action='store_true',
+        help="Disable autocast",
     )
     parser.add_argument(
         "--repeat",
@@ -193,6 +191,11 @@ def parse_args():
         action='store_true',
         help="Disable mem efficient attention",
     )
+    parser.add_argument(
+        "--skip_first",
+        action='store_true',
+        help="Run a warm-up iteration (for compilation), which isn't included in total time",
+    )
     opt = parser.parse_args()
     return opt
 
@@ -212,7 +215,9 @@ def main(opt):
     model = load_model_from_config(config, f"{opt.ckpt}")
 
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-    model = model.to(device)
+    default_dtype = torch.float16 if config["model"]["params"]["unet_config"]["params"]["use_fp16"] else torch.float32
+    torch.set_default_dtype(default_dtype)
+    model = model.to(device).to(default_dtype)
 
     if opt.plms:
         sampler = PLMSSampler(model)
@@ -253,7 +258,7 @@ def main(opt):
     if opt.fixed_code:
         start_code = torch.randn([opt.n_samples, opt.C, opt.H // opt.f, opt.W // opt.f], device=device)
 
-    precision_scope = autocast if opt.precision == "autocast" else nullcontext
+    precision_scope = nullcontext if opt.disable_autocast else autocast
     with torch.no_grad(), \
         precision_scope("cuda"), \
         model.ema_scope(), \
@@ -263,8 +268,9 @@ def main(opt):
                                         ):
 
             all_samples = list()
-            for n in trange(opt.n_iter + 1, desc="Sampling"):  # Add a warm-up iteration
-                if n == 1:
+            start_iter = 1 if opt.skip_first else 0
+            for n in trange(opt.n_iter + start_iter, desc="Sampling"):  # Add a warm-up iteration
+                if n == start_iter:
                     tic = time.time()  # Warm-up iteration finished, start measuring time
                 for prompts in tqdm(data, desc="data"):
                     tic_inner = time.time()
@@ -284,7 +290,6 @@ def main(opt):
                                                      unconditional_conditioning=uc,
                                                      eta=opt.ddim_eta,
                                                      x_T=start_code)
-
                     x_samples = model.decode_first_stage(samples)
                     x_samples = torch.clamp((x_samples + 1.0) / 2.0, min=0.0, max=1.0)
 
