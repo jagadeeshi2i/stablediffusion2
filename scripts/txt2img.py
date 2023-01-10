@@ -178,6 +178,11 @@ def parse_args():
     default=None,
     help="Output file for elapsed time",
     )
+    parser.add_argument(
+    "--skip_first",
+    action='store_true',
+    help="Run a warm-up iteration (for compilation), which isn't included in total time",
+    )
     opt = parser.parse_args()
     return opt
 
@@ -244,7 +249,10 @@ def main(opt):
         model.ema_scope():
             tic = time.time()
             all_samples = list()
-            for n in trange(opt.n_iter, desc="Sampling"):
+            start_iter = 1 if opt.skip_first else 0
+            for n in trange(opt.n_iter + start_iter, desc="Sampling"):  # Add a warm-up iteration
+                if n == start_iter:
+                    tic = time.time()  # Warm-up iteration finished, start measuring time
                 for prompts in tqdm(data, desc="data"):
                     uc = None
                     if opt.scale != 1.0:
