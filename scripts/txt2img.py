@@ -193,6 +193,11 @@ def parse_args():
         action='store_true',
         help="Disable mem efficient attention",
     )
+    parser.add_argument(
+        "--skip_first",
+        action='store_true',
+        help="Run a warm-up iteration (for compilation), which isn't included in total time",
+    )
     opt = parser.parse_args()
     return opt
 
@@ -263,8 +268,9 @@ def main(opt):
                                         ):
 
             all_samples = list()
-            for n in trange(opt.n_iter + 1, desc="Sampling"):  # Add a warm-up iteration
-                if n == 1:
+            start_iter = 1 if opt.skip_first else 0
+            for n in trange(opt.n_iter + start_iter, desc="Sampling"):  # Add a warm-up iteration
+                if n == start_iter:
                     tic = time.time()  # Warm-up iteration finished, start measuring time
                 for prompts in tqdm(data, desc="data"):
                     tic_inner = time.time()

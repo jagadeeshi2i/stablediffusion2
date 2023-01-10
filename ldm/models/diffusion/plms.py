@@ -1,16 +1,8 @@
 """SAMPLING ONLY."""
 
 import torch
-import torch._dynamo.config
 import torch._inductor.config
 torch._inductor.config.fallback_random = True
-# torch._inductor.config.triton.cudagraphs = False
-# torch._dynamo.config.verbose=True
-# torch._inductor.config.debug = True
-
-#import torch._dynamo as dynamo
-#prof = dynamo.utils.CompileProfiler()
-
 
 import numpy as np
 #from tqdm import tqdm
@@ -23,13 +15,8 @@ from ldm.models.diffusion.sampling_util import norm_thresholding
 class PLMSSampler(object):
     def __init__(self, model, schedule="linear", **kwargs):
         super().__init__()
-        self.model = model #torch.compile(model)
-
-        #print("~~~~~~~~~~~~~~~~recompiling!!!~~~~~~~~~~~~~~~~~~~~")
-        #self.model.model.diffusion_model = torch.compile(self.model.model.diffusion_model)
-        # print("model")
-        # print(model.__class__)
-        # print(model)
+        self.model = model
+        self.model.model.diffusion_model = torch.compile(self.model.model.diffusion_model)
         self.ddpm_num_timesteps = model.num_timesteps
         self.schedule = schedule
     def register_buffer(self, name, attr):
@@ -73,8 +60,6 @@ class PLMSSampler(object):
                         1 - self.alphas_cumprod / self.alphas_cumprod_prev))
         self.register_buffer('ddim_sigmas_for_original_num_steps', sigmas_for_original_sampling_steps)
 
-        self.plms_sampling = torch.compile(self.plms_sampling)
-
     @torch.no_grad()
     def sample(self,
                S,
@@ -116,28 +101,6 @@ class PLMSSampler(object):
         size = (batch_size, C, H, W)
         print(f'Data shape for PLMS sampling is {size}')
 
-
-        # explanation, out_guards, graphs, ops_per_graph, break_reasons, explanation_verbose = torch._dynamo.explain(
-        #             self.plms_sampling, conditioning, size,
-        #                                             callback=callback,
-        #                                             img_callback=img_callback,
-        #                                             quantize_denoised=quantize_x0,
-        #                                             mask=mask, x0=x0,
-        #                                             ddim_use_original_steps=False,
-        #                                             noise_dropout=noise_dropout,
-        #                                             temperature=temperature,
-        #                                             score_corrector=score_corrector,
-        #                                             corrector_kwargs=corrector_kwargs,
-        #                                             x_T=x_T,
-        #                                             log_every_t=log_every_t,
-        #                                             unconditional_guidance_scale=unconditional_guidance_scale,
-        #                                             unconditional_conditioning=unconditional_conditioning,
-        #                                             dynamic_threshold=dynamic_threshold,
-        #         )
-        # print(explanation_verbose)
-        # assert False
-
-
         samples, intermediates = self.plms_sampling(conditioning, size,
                                                     callback=callback,
                                                     img_callback=img_callback,
@@ -154,10 +117,8 @@ class PLMSSampler(object):
                                                     unconditional_conditioning=unconditional_conditioning,
                                                     dynamic_threshold=dynamic_threshold,
                                                     )
-        #print(prof.report())
         return samples, intermediates
 
-    #@dynamo.optimize(prof)
     @torch.no_grad()
     def plms_sampling(self, cond, shape,
                       x_T=None, ddim_use_original_steps=False,
@@ -200,7 +161,6 @@ class PLMSSampler(object):
 
         for i in range(len(iterator)):
             step = iterator[i]
-            #print(f"~~~~~~ iteration number {i} ~~~~~~~")
             index = total_steps - i - 1
             ts = torch.full((b,), step, device=device, dtype=torch.long)
             ts_next = torch.full((b,), time_range[min(i + 1, len(time_range) - 1)], device=device, dtype=torch.long)
@@ -230,7 +190,7 @@ class PLMSSampler(object):
                 intermediates['pred_x0'].append(pred_x0)
 
         return img, intermediates
-    #@torch.compile(fullgraph=True)
+
     @torch.no_grad()
     def p_sample_plms(self, x, c, t, index, repeat_noise=False, use_original_steps=False, quantize_denoised=False,
                       temperature=1., noise_dropout=0., score_corrector=None, corrector_kwargs=None,
@@ -241,23 +201,11 @@ class PLMSSampler(object):
         def get_model_output(x, t):
             if unconditional_conditioning is None or unconditional_guidance_scale == 1.:
                 e_t = self.model.apply_model(x, t, c)
-
-                # explanation, out_guards, graphs, ops_per_graph, break_reasons, explanation_verbose = torch._dynamo.explain(
-                #     self.model.apply_model, x, t, c
-                # )
-                # print(explanation_verbose)
-
             else:
                 x_in = torch.cat([x] * 2)
                 t_in = torch.cat([t] * 2)
                 c_in = torch.cat([unconditional_conditioning, c])
                 e_t_uncond, e_t = self.model.apply_model(x_in, t_in, c_in).chunk(2)
-
-                # explanation, out_guards, graphs, ops_per_graph, break_reasons, explanation_verbose = torch._dynamo.explain(
-                #     self.model.apply_model, x_in, t_in, c_in
-                # )
-                # print(explanation_verbose)
-
                 e_t = e_t_uncond + unconditional_guidance_scale * (e_t - e_t_uncond)
 
             if score_corrector is not None:
