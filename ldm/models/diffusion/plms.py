@@ -1,11 +1,11 @@
 """SAMPLING ONLY."""
 
 import torch
-import torch._inductor.config
-torch._inductor.config.fallback_random = True
+# import torch._inductor.config
+# torch._inductor.config.fallback_random = True
 
 import numpy as np
-#from tqdm import tqdm
+from tqdm import tqdm
 from functools import partial
 
 from ldm.modules.diffusionmodules.util import make_ddim_sampling_parameters, make_ddim_timesteps, noise_like
@@ -49,11 +49,9 @@ class PLMSSampler(object):
         ddim_sigmas, ddim_alphas, ddim_alphas_prev = make_ddim_sampling_parameters(alphacums=alphas_cumprod.cpu(),
                                                                                    ddim_timesteps=self.ddim_timesteps,
                                                                                    eta=ddim_eta,verbose=verbose)
-        #self.register_buffer_numpy('ddim_sigmas', ddim_sigmas)
-        self.ddim_sigmas = ddim_sigmas
+        self.register_buffer('ddim_sigmas', ddim_sigmas)
         self.register_buffer('ddim_alphas', ddim_alphas)
-        #self.register_buffer('ddim_alphas_prev', ddim_alphas_prev)
-        self.ddim_alphas_prev = ddim_alphas_prev
+        self.register_buffer('ddim_alphas_prev', ddim_alphas_prev)
         self.register_buffer('ddim_sqrt_one_minus_alphas', np.sqrt(1. - ddim_alphas))
         sigmas_for_original_sampling_steps = ddim_eta * torch.sqrt(
             (1 - self.alphas_cumprod_prev) / (1 - self.alphas_cumprod) * (
@@ -141,11 +139,11 @@ class PLMSSampler(object):
             timesteps = self.ddim_timesteps[:subset_end]
 
         intermediates = {'x_inter': [img], 'pred_x0': [img]}
-        time_range = list(reversed(range(0,timesteps))) if ddim_use_original_steps else timesteps[::-1] #np.flip(timesteps)
+        time_range = list(reversed(range(0,timesteps))) if ddim_use_original_steps else np.flip(timesteps)
         total_steps = timesteps if ddim_use_original_steps else timesteps.shape[0]
         print(f"Running PLMS Sampling with {total_steps} timesteps")
 
-        iterator = time_range #tqdm(time_range, desc='PLMS Sampler', total=total_steps)
+        iterator = tqdm(time_range, desc='PLMS Sampler', total=total_steps)
         old_eps = []
 
         alphas = self.model.alphas_cumprod if ddim_use_original_steps else self.ddim_alphas
@@ -159,8 +157,7 @@ class PLMSSampler(object):
         self.sigma_t = sigmas.reshape(-1, 1, 1, 1, 1).expand(-1, b, 1, 1, 1).to(device=device, dtype=self.a_t.dtype)
         self.sqrt_one_minus_at = sqrt_one_minus_alphas.reshape(-1, 1, 1, 1, 1).expand(-1, b, 1, 1, 1).to(device=device)
 
-        for i in range(len(iterator)):
-            step = iterator[i]
+        for i, step in enumerate(iterator):
             index = total_steps - i - 1
             ts = torch.full((b,), step, device=device, dtype=torch.long)
             ts_next = torch.full((b,), time_range[min(i + 1, len(time_range) - 1)], device=device, dtype=torch.long)
