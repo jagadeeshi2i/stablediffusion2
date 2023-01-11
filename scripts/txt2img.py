@@ -198,6 +198,12 @@ def parse_args():
         action='store_true',
         help="Run a warm-up iteration (for compilation), which isn't included in total time",
     )
+    parser.add_argument(
+        "--compile",
+        action='store_true',
+        help="Compile model with torch.compile",
+    )
+
     opt = parser.parse_args()
     return opt
 
@@ -220,7 +226,7 @@ def main(opt):
     model = model.to(device)
 
     if opt.plms:
-        sampler = PLMSSampler(model)
+        sampler = PLMSSampler(model, torch_compile=opt.compile)
     elif opt.dpm:
         sampler = DPMSolverSampler(model)
     else:

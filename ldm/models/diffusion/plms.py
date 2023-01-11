@@ -13,10 +13,11 @@ from ldm.models.diffusion.sampling_util import norm_thresholding
 
 
 class PLMSSampler(object):
-    def __init__(self, model, schedule="linear", **kwargs):
+    def __init__(self, model, schedule="linear", torch_compile=False, **kwargs):
         super().__init__()
         self.model = model
-        self.model.model.diffusion_model = torch.compile(self.model.model.diffusion_model)
+        if torch_compile:
+            self.model.model.diffusion_model = torch.compile(self.model.model.diffusion_model)
         self.ddpm_num_timesteps = model.num_timesteps
         self.schedule = schedule
     def register_buffer(self, name, attr):
