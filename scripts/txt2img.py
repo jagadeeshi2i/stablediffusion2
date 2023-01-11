@@ -247,7 +247,6 @@ def main(opt):
     with torch.no_grad(), \
         precision_scope("cuda"), \
         model.ema_scope():
-            tic = time.time()
             all_samples = list()
             start_iter = 1 if opt.skip_first else 0
             for n in trange(opt.n_iter + start_iter, desc="Sampling"):  # Add a warm-up iteration
