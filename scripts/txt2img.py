@@ -173,15 +173,20 @@ def parse_args():
         help="repeat each prompt in file this often",
     )
     parser.add_argument(
-    "--time_file",
-    type=str,
-    default=None,
-    help="Output file for elapsed time",
+        "--time_file",
+        type=str,
+        default=None,
+        help="Output file for elapsed time",
     )
     parser.add_argument(
-    "--skip_first",
-    action='store_true',
-    help="Run a warm-up iteration (for compilation), which isn't included in total time",
+        "--skip_first",
+        action='store_true',
+        help="Run a warm-up iteration (for compilation), which isn't included in total time",
+    )
+    parser.add_argument(
+        "--enable_tf32",
+        action='store_true',
+        help="Enable TensorFloat-32 on Ampere GPUs",
     )
     opt = parser.parse_args()
     return opt
@@ -197,6 +202,10 @@ def put_watermark(img, wm_encoder=None):
 
 def main(opt):
     seed_everything(opt.seed)
+
+    if opt.enable_tf32:
+        torch.backends.cuda.matmul.allow_tf32 = True
+        print("Enabled TensorFloat-32 mode")
 
     config = OmegaConf.load(f"{opt.config}")
     model = load_model_from_config(config, f"{opt.ckpt}")
